@@ -1,0 +1,61 @@
+"Parse_JSON": {
+              "type": "ParseJson",
+              "inputs": {
+                "content": "@body('Get_file_content')",
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "results": {
+                      "type": "object",
+                      "properties": {
+                        "counts": {
+                          "type": "object",
+                          "properties": {
+                            "total": { "type": "integer" },
+                            "success": { "type": "integer" },
+                            "failure": { "type": "integer" }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "Append_to_htmlRows": {
+              "type": "AppendToStringVariable",
+              "inputs": {
+                "name": "htmlRows",
+                "value": "<tr><td>@{split(item()?['Path'],'\\\\')[-2]}</td><td>@{body('Parse_JSON')?['results']?['counts']?['total']}</td><td>@{body('Parse_JSON')?['results']?['counts']?['success']}</td><td>@{body('Parse_JSON')?['results']?['counts']?['failure']}</td></tr>"
+              }
+            }
+          }
+        }
+      },
+      "runAfter": {
+        "List_files": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Compose_HTML": {
+      "type": "Compose",
+      "inputs": "<h2>Serenity Test Summary</h2><table border='1'><tr><th>Project Name</th><th>Total</th><th>Passed</th><th>Failed</th></tr>@{variables('htmlRows')}</table>",
+      "runAfter": {
+        "Apply_to_each_file": [
+          "Succeeded"
+        ]
+      }
+    }
+  },
+  "triggers": {
+    "Recurrence": {
+      "type": "Recurrence",
+      "recurrence": {
+        "frequency": "Hour",
+        "interval": 1
+      }
+    }
+  },
+  "contentVersion": "1.0.0.0"
+}
