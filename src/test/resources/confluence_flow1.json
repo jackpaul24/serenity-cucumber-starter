@@ -1,0 +1,60 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "actions": {
+    "Initialize_htmlRows": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "htmlRows",
+            "type": "String",
+            "value": ""
+          }
+        ]
+      },
+      "runAfter": {}
+    },
+    "List_files": {
+      "type": "ApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "filesystem",
+          "operationId": "ListFilesInFolder",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_filesystem"
+        },
+        "parameters": {
+          "folderPath": "/"
+        }
+      },
+      "runAfter": {
+        "Initialize_htmlRows": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Apply_to_each_file": {
+      "type": "Foreach",
+      "foreach": "@body('List_files')?['value']",
+      "actions": {
+        "Condition_check_filename": {
+          "type": "If",
+          "expression": {
+            "equals": [
+              "@item()?['Name']",
+              "serenity-summary.json"
+            ]
+          },
+          "actions": {
+            "Get_file_content": {
+              "type": "ApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "filesystem",
+                  "operationId": "GetFileContentByPath",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_filesystem"
+                },
+                "parameters": {
+                  "path": "@item()?['Path']"
+                }
+              }
+            },
