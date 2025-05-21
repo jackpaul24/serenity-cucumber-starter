@@ -1,0 +1,100 @@
+{
+  "info": {
+    "name": "Confluence Update with Versioning",
+    "_postman_id": "abcdef01-2345-6789-abcd-ef0123456789",
+    "description": "Fetches current Confluence page version then updates it with a test summary table.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Get Page Version",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Basic base64encoded(email:api_token)",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "https://your-domain.atlassian.net/wiki/rest/api/content/123456?expand=version,body.storage",
+          "protocol": "https",
+          "host": [
+            "your-domain",
+            "atlassian",
+            "net"
+          ],
+          "path": [
+            "wiki",
+            "rest",
+            "api",
+            "content",
+            "123456"
+          ],
+          "query": [
+            {
+              "key": "expand",
+              "value": "version,body.storage"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Update Confluence Page",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Basic base64encoded(email:api_token)",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"123456\",\n  \"type\": \"page\",\n  \"title\": \"{{title}}\",\n  \"space\": {\n    \"key\": \"ENG\"\n  },\n  \"version\": {\n    \"number\": \"{{nextVersion}}\"\n  },\n  \"body\": {\n    \"storage\": {\n      \"value\": \"{{updatedHtml}}\",\n      \"representation\": \"storage\"\n    }\n  }\n}"
+        },
+        "url": {
+          "raw": "https://your-domain.atlassian.net/wiki/rest/api/content/123456",
+          "protocol": "https",
+          "host": [
+            "your-domain",
+            "atlassian",
+            "net"
+          ],
+          "path": [
+            "wiki",
+            "rest",
+            "api",
+            "content",
+            "123456"
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "event": [],
+  "variable": [
+    {
+      "key": "title",
+      "value": "Automation Test Dashboard"
+    },
+    {
+      "key": "nextVersion",
+      "value": "2"
+    },
+    {
+      "key": "updatedHtml",
+      "value": "<h2>Sample Serenity Test Summary</h2><table border='1'><tr><th>Project Name</th><th>Total</th><th>Passed</th><th>Failed</th></tr><tr><td>TestProject</td><td>100</td><td>95</td><td>5</td></tr></table>"
+    }
+  ]
+}
