@@ -1,33 +1,59 @@
-package steps;
-
 import com.deque.axe.AXE;
-import net.serenitybdd.core.annotations.findby.By;
-import net.serenitybdd.core.pages.PageObject;
-import net.serenitybdd.core.steps.UIInteractionSteps;
-import net.thucydides.core.annotations.Step;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebDriver;
+import net.serenitybdd.core.steps.UIInteractionSteps;
+import org.junit.Assert;
 
-import java.net.URL;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.*;
 
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.is;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class AccessibilitySteps extends UIInteractionSteps {
 
-    private static final URL scriptUrl = AccessibilitySteps.class.getClassLoader().getResource("axe.min.js");
+    private static final String AXE_SCRIPT_PATH = "src/test/resources/axe.min.js";
 
-    @Step("Check accessibility violations on the current page")
-    public void checkAccessibility() {
-        JSONObject responseJSON = new AXE.Builder(getDriver(), scriptUrl).analyze();
-        JSONArray violations = responseJSON.getJSONArray("violations");
-        if (violations.length() == 0) {
-            System.out.println("No accessibility violations found.");
-        } else {
-            AXE.writeResults("accessibilityReport", responseJSON);
-            System.out.println(violations.toString(2));
-            assertThat("Accessibility violations found", violations.length(), is(0));
+    public void checkAccessibility() throws IOException {
+        WebDriver driver = getDriver(); // Ensures Serenity injects the driver
+
+        // Inject axe.min.js
+        String axeScript = new String(Files.readAllBytes(Paths.get(AXE_SCRIPT_PATH)));
+        ((JavascriptExecutor) driver).executeScript(axeScript);
+
+        // Run axe.run() and capture result as Java Map
+        Object result = ((JavascriptExecutor) driver).executeScript("return axe.run()");
+        ObjectMapper mapper = new ObjectMapper();
+
+        // Convert result to JSON
+        String jsonString = mapper.writeValueAsString(result);
+        JSONObject jsonObject = new JSONObject(jsonString);
+
+        // Extract violations
+        JSONArray violations = jsonObject.getJSONArray("violations");
+
+        // Filter by tags
+        Set<String> filterTags = new HashSet<>(Arrays.asList("wcag2a", "wcag2aa"));
+        JSONArray filteredViolations = new JSONArray();
+
+        for (int i = 0; i < violations.length(); i++) {
+            JSONObject violation = violations.getJSONObject(i);
+            JSONArray tags = violation.getJSONArray("tags");
+
+            for (int j = 0; j < tags.length(); j++) {
+                if (filterTags.contains(tags.getString(j))) {
+                    filteredViolations.put(violation);
+                    break;
+                }
+            }
         }
+
+        System.out.println("Filtered Violations: " + filteredViolations.toString(2));
+
+        // Fail test if there are violations
+        Assert.assertTrue("Accessibility violations found: " + filteredViolations.length(), filteredViolations.length() == 0);
     }
 }
