@@ -5,13 +5,19 @@ import java.util.regex.Matcher
 
 // ===== CONFIG =====
 def serenityFile = new File("${env.WORKSPACE}/target/site/serenity/serenity-summary.json")
-def projectName = "ProjectX"  // Optionally replace with env.PROJECT_NAME
+def projectName = "ProjectX"  // Replace with env.PROJECT_NAME if needed
 def confluenceBaseUrl = "https://your-domain.atlassian.net/wiki"
 def confluencePageId = "123456"
 def spaceKey = "ENG"
-def authToken = System.getenv("CONFLUENCE_AUTH_TOKEN")  // From Jenkins env var or credentials
+def authToken = System.getenv("CONFLUENCE_AUTH_TOKEN")  // Secure Jenkins env var
 
-// ===== PARSE SERENITY SUMMARY =====
+// ===== BUILD REPORT LINK (from publishHTML) =====
+def buildUrl = System.getenv("BUILD_URL")
+def targetEnv = System.getenv("TARGET_ENVIRONMENT") ?: "env"
+def reportName = "Serenity_Report_${targetEnv}"
+def reportUrl = "${buildUrl}${reportName}/"
+
+// ===== PARSE SERENITY REPORT =====
 if (!serenityFile.exists()) {
     println "❌ Serenity summary file not found: ${serenityFile.absolutePath}"
     return
@@ -23,7 +29,7 @@ def passed = json.results.counts.success ?: 0
 def failed = json.results.counts.failure ?: 0
 def now = new Date().format("yyyy-MM-dd HH:mm")
 
-// ===== FETCH CURRENT PAGE CONTENT =====
+// ===== GET CURRENT CONFLUENCE PAGE =====
 def getPageUrl = "${confluenceBaseUrl}/rest/api/content/${confluencePageId}?expand=version,body.storage"
 def getConn = new URL(getPageUrl).openConnection()
 getConn.setRequestProperty("Authorization", authToken)
@@ -34,29 +40,33 @@ def version = pageJson.version.number
 def title = pageJson.title
 def currentHtml = pageJson.body.storage.value
 
-// ===== PREPARE REGEX & BUILD NEW ROW =====
+// ===== BUILD REGEX TO MATCH ROW =====
 def rowPattern = Pattern.compile("<tr>\\s*<td>${projectName}</td>(.*?)</tr>", Pattern.DOTALL)
 def matcher = rowPattern.matcher(currentHtml)
 def newRow = ""
+def reportCell = "<a href='${reportUrl}'>View Report</a>"
 
 if (matcher.find()) {
     def existingTds = matcher.group(1)
     def tdMatches = (existingTds =~ /<td>(.*?)<\/td>/).collect()
-    def reportCell = tdMatches.size() > 3 ? tdMatches[3][1] : "—"
+    if (tdMatches.size() > 3) {
+        reportCell = tdMatches[3][1]  // Preserve existing report link if present
+    }
 
     newRow = "<tr><td>${projectName}</td><td>${total}</td><td>${passed}</td><td>${failed}</td><td>${reportCell}</td><td>${now}</td></tr>"
     currentHtml = matcher.replaceFirst(Matcher.quoteReplacement(newRow))
 
     println "✅ Updated row for '${projectName}'"
 } else {
-    newRow = "<tr><td>${projectName}</td><td>${total}</td><td>${passed}</td><td>${failed}</td><td><a href='https://reports.example.com/${projectName}/latest'>View Report</a></td><td>${now}</td></tr>"
+    // Insert new row with constructed report link
+    newRow = "<tr><td>${projectName}</td><td>${total}</td><td>${passed}</td><td>${failed}</td><td>${reportCell}</td><td>${now}</td></tr>"
     def tableEnd = currentHtml.lastIndexOf("</table>")
     currentHtml = currentHtml.substring(0, tableEnd) + newRow + currentHtml.substring(tableEnd)
 
     println "➕ Inserted new row for '${projectName}'"
 }
 
-// ===== SEND UPDATED CONTENT BACK TO CONFLUENCE =====
+// ===== PUSH TO CONFLUENCE =====
 def updatePayload = [
     id      : confluencePageId,
     type    : "page",
@@ -83,8 +93,8 @@ putConn.outputStream.withWriter("UTF-8") { writer ->
 
 def responseCode = putConn.responseCode
 if (responseCode == 200) {
-    println "✅ Confluence page updated successfully."
+    println "✅ Confluence page updated successfully for ${projectName}"
 } else {
-    println "❌ Failed to update Confluence page. HTTP ${responseCode}"
+    println "❌ Failed to update Confluence page: HTTP ${responseCode}"
     putConn.errorStream?.withReader { reader -> println reader.text }
 }
