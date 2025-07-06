@@ -1,0 +1,114 @@
+// Groovy Script for Jenkins Pipeline to Publish Serenity Results to Confluence Cloud // Requirements: // - Jenkins has 'httpRequest' plugin // - Serenity test generates summary in target/site/serenity/serenity-summary.json // - Confluence API Token stored as Jenkins credential
+
+pipeline { agent any
+
+environment {
+    CONFLUENCE_BASE_URL = 'https://your-domain.atlassian.net/wiki'
+    CONFLUENCE_PAGE_ID = '1234567890' // Replace with actual page ID
+    CONFLUENCE_SPACE_KEY = 'MYSPACE'  // Replace with actual space key
+    PROJECT_NAME = 'MyProject'
+    SERENITY_SUMMARY = 'target/site/serenity/serenity-summary.json'
+    REPORT_DIR = "/mnt/reports/${env.PROJECT_NAME}"
+    REPORT_LINK = "http://intranet.company/reports/${env.PROJECT_NAME}/index.html" // Internal webserver link
+}
+
+stages {
+    stage('Publish Serenity Report to Internal Web Server') {
+        steps {
+            script {
+                sh '''
+                    REPORT_SRC=target/site/serenity
+                    REPORT_DEST=${REPORT_DIR}
+
+                    rm -rf "$REPORT_DEST"
+                    mkdir -p "$REPORT_DEST"
+                    cp -r "$REPORT_SRC"/* "$REPORT_DEST"/
+                '''
+            }
+        }
+    }
+
+    stage('Parse Serenity Report') {
+        steps {
+            script {
+                def json = readJSON file: env.SERENITY_SUMMARY
+                def total = json.testCount ?: 0
+                def passed = json.testSuccessCount ?: 0
+                def failed = json.testFailureCount ?: 0
+
+                env.TEST_TOTAL = total.toString()
+                env.TEST_PASSED = passed.toString()
+                env.TEST_FAILED = failed.toString()
+
+                echo "Project: ${env.PROJECT_NAME}, Total: ${env.TEST_TOTAL}, Passed: ${env.TEST_PASSED}, Failed: ${env.TEST_FAILED}"
+                echo "Report URL: ${env.REPORT_LINK}"
+            }
+        }
+    }
+
+    stage('Update Confluence Page') {
+        steps {
+            withCredentials([usernamePassword(credentialsId: 'confluence-api-token', passwordVariable: 'CONF_TOKEN', usernameVariable: 'CONF_USER')]) {
+                script {
+                    def authHeader = "Basic " + "${CONF_USER}:${CONF_TOKEN}".bytes.encodeBase64().toString()
+
+                    // Get current page version
+                    def getResp = httpRequest(
+                        url: "${env.CONFLUENCE_BASE_URL}/rest/api/content/${env.CONFLUENCE_PAGE_ID}?expand=body.storage,version,title,space",
+                        customHeaders: [[name: 'Authorization', value: authHeader]],
+                        acceptType: 'APPLICATION_JSON'
+                    )
+                    def page = readJSON text: getResp.content
+                    def newVersion = page.version.number.toInteger() + 1
+                    def title = page.title
+
+                    // Construct new HTML content
+                    def tableHtml = """
+                        <table><thead><tr>
+                            <th>Project</th><th>Total</th><th>Passed</th><th>Failed</th><th>Report Link</th>
+                        </tr></thead><tbody>
+                            <tr>
+                                <td>${env.PROJECT_NAME}</td>
+                                <td>${env.TEST_TOTAL}</td>
+                                <td>${env.TEST_PASSED}</td>
+                                <td>${env.TEST_FAILED}</td>
+                                <td><a href='${env.REPORT_LINK}'>Serenity Report</a></td>
+                            </tr>
+                        </tbody></table>
+                    """
+
+                    // Build update payload
+                    def updateBody = [
+                        id: env.CONFLUENCE_PAGE_ID,
+                        type: 'page',
+                        title: title,
+                        space: [key: env.CONFLUENCE_SPACE_KEY],
+                        body: [
+                            storage: [
+                                value: tableHtml,
+                                representation: 'storage'
+                            ]
+                        ],
+                        version: [number: newVersion]
+                    ]
+
+                    def payload = writeJSON returnText: true, json: updateBody
+
+                    // PUT request to update page
+                    httpRequest(
+                        httpMode: 'PUT',
+                        url: "${env.CONFLUENCE_BASE_URL}/rest/api/content/${env.CONFLUENCE_PAGE_ID}",
+                        customHeaders: [[name: 'Authorization', value: authHeader]],
+                        requestBody: payload,
+                        contentType: 'APPLICATION_JSON'
+                    )
+
+                    echo "Confluence page updated successfully."
+                }
+            }
+        }
+    }
+}
+
+}
+
