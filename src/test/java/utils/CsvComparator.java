@@ -1,7 +1,8 @@
 package utils;
 
 import com.opencsv.CSVReader;
-import net.thucydides.core.annotations.Step;
+import com.opencsv.exceptions.CsvValidationException;
+import net.serenitybdd.annotations.Step;
 import net.thucydides.core.steps.StepEventBus;
 
 import java.io.FileReader;
@@ -99,6 +100,8 @@ public class CsvComparator {
                 rows.put(key, rowMap);
             }
             return rows;
+        } catch (CsvValidationException e) {
+            throw new RuntimeException(e);
         }
     }
 
@@ -118,7 +121,7 @@ public class CsvComparator {
             sb.append("Column differences:\n");
             result.getColumnDifferences().forEach(c -> sb.append("  ").append(c).append("\n"));
         }
-        StepEventBus.getEventBus().stepFinished(sb.toString());
+        StepEventBus.getEventBus().stepFinished();
     }
 
     public static class ComparisonResult {
